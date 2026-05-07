@@ -1,4 +1,4 @@
-buiduyvuong_20223832@20223832:~/xv6-riscv$ cat kernel/sysfile.c
+//buiduyvuong_20223832@20223832:~/xv6-riscv$ cat kernel/sysfile.c
 #define MAX_RECURSION 10
 #include "types.h"
 #include "riscv.h"
