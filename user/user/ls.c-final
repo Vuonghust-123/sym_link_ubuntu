@@ -39,8 +39,10 @@ ls(char *path)
   int fd;
   struct dirent de;
   struct stat st;
-
-  // SỬA 4: Dùng O_NOFOLLOW ngay từ đầu để không follow symlink
+//Sử dụng cờ O_NOFOLLOW: Để đảm bảo ls mở chính cái liên kết chứ không phải tệp mà nó trỏ tới.
+// Đọc và hiển thị đích đến: Khi nhận diện loại Inode là T_SYMLINK (loại 4)
+//chương trình gọi hàm read() để lấy chuỗi đường dẫn đích và in ra theo định dạng link -> target
+ 
   if((fd = open(path, O_RDONLY | O_NOFOLLOW)) < 0){
     fprintf(2, "ls: cannot open %s\n", path);
     return;
@@ -58,7 +60,7 @@ ls(char *path)
     printf("%s %s %d %d\n", fmtname(path), type_to_str(st.type), st.ino, (int)st.size);
     break;
 
-  // SỬA 3: T_SYMLINK tách thành case riêng, đúng vị trí trong switch
+  
   case T_SYMLINK:
     {
       char target[128];
@@ -98,7 +100,7 @@ ls(char *path)
         continue;
       }
 
-      // SỬA 2: Nếu là symlink → đọc target và hiển thị dạng "name l -> target"
+      
       if(st.type == T_SYMLINK){
         char target[128];
         int n = read(fd2, target, sizeof(target) - 1);
