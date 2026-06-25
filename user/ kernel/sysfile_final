@@ -171,7 +171,7 @@ bad:
 
 
 
-
+//Store Paths (Lưu trữ đường dẫn)
 uint64
 sys_symlink(void)
 {
@@ -179,28 +179,32 @@ sys_symlink(void)
   struct inode *ip;
   int n;
 
-  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
-    return -1;
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)  
+    return -1;//Sử dụng argstr(0, target, MAXPATH) để lấy đường dẫn đích và argstr(1, path, MAXPATH) để lấy vị trí tạo liên kết. 
+               //MAXPATH (thường là 128 byte) giới hạn độ dài chuỗi để đảm bảo an toàn bộ nhớ
 
   n = strlen(target) + 1;  // include '\0'
 
-  begin_op();
+  begin_op(); //Toàn bộ quá trình được bọc trong begin_op() và end_op(). Điều này đảm bảo tính nguyên tử (atomicity) 
+//nếu hệ thống sập nguồn giữa chừng, liên kết sẽ hoặc được tạo hoàn chỉnh, hoặc không được tạo gì cả, tránh làm hỏng cấu trúc hệ thống tệp
 
-  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {  
     end_op();
     return -1;
-  }
+  } //Hàm gọi create(path, T_SYMLINK, 0, 0) để cấp phát một Inode mới trên đĩa. 
+    //Ở đây, T_SYMLINK là một loại tệp mới (thường được định nghĩa là 4) để nhân có thể phân biệt nó với tệp thường hoặc thư mục
 
   if (writei(ip, 0, (uint64)target, 0, n) != n) {
     iunlockput(ip);
     end_op();
     return -1;
-  }
+  }  //writei(ip, 0, (uint64)target, 0, n) ghi trực tiếp chuỗi đường dẫn target vào các khối dữ liệu (data blocks) của Inode vừa tạo. 
+    //Inode của liên kết biểu tượng không chứa dữ liệu người dùng mà chỉ chứa "địa chỉ" văn bản của tệp đích
 
   iunlockput(ip);
   end_op();
   return 0;
-}
+} //iunlockput(ip) nhả khóa và giảm số lượng tham chiếu của Inode để tránh rò rỉ tài nguyên (Inode leak) trong nhân
 
 // Is the directory dp empty except for "." and ".." ?
 static int
