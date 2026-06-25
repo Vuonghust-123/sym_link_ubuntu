@@ -639,6 +639,8 @@ namei(char *path)
 }
 
 struct inode*
+//hàm namei_nofollow được triển khai như một hàm bao (wrapper) cho hàm lõi namex, sử dụng tham số follow = 0
+//để chỉ thị nhân dừng lại ngay tại mắt xích cuối cùng nếu đó là một liên kết biểu tượng
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name, 0);
