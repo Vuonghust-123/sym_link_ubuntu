@@ -514,7 +514,8 @@ namex(char *path, int nameiparent, char *name, int follow)
   char target[MAXPATH];   // 128 bytes
   parent_dir = 0; 
   // KHÔNG dùng combined[] nữa — tái dùng pathbuf để tiết kiệm stack
-
+  //Thay vì sử dụng bộ nhớ tĩnh (static) dễ gây ra lỗi Race Condition hoặc tạo thêm mảng lớn gây tốn Stack,
+//mã nguồn tái sử dụng pathbuf để lưu trữ đường dẫn đang xử lý
   strncpy(pathbuf, path, MAXPATH - 1);
   pathbuf[MAXPATH - 1] = '\0';
   path = pathbuf;
@@ -523,21 +524,37 @@ namex(char *path, int nameiparent, char *name, int follow)
     ip = iget(ROOTDEV, ROOTINO);
   else
     ip = idup(myproc()->cwd);
+// Khởi tạo điểm bắt đầu: Hệ thống kiểm tra ký tự đầu tiên của path. 
+// Nếu là /, việc tra cứu bắt đầu từ Inode gốc (ROOTINO). Nếu không, nó bắt đầu từ thư mục làm việc hiện tại (cwd) của tiến trình
 
+
+
+
+
+
+//Vòng lặp while sử dụng skipelem để tách từng mắt xích của đường dẫn (ví dụ: tách a từ /a/b/c). Trong mỗi vòng lặp:
+
+    //Kiểm tra loại thư mục: Chỉ Inode loại T_DIR mới được phép tiếp tục tra cứu thành phần con. 
+//Nếu gặp loại khác, hàm giải phóng tài nguyên và trả về lỗi (FIX 1).
+    //Xử lý nameiparent: Nếu cờ này được bật và đã đến mắt xích cuối cùng, hàm sẽ dừng lại và trả về thư mục cha (
+//(dùng cho lệnh link hoặc unlink tác động lên chính cái tên tệp).
+//parent_dir: Hệ thống giữ lại Inode của thư mục cha (idup(ip)). Điều này cực kỳ quan trọng để tuân thủ chuẩn POSIX:
+//các liên kết tương đối (Relative Symlinks) phải được phân giải dựa trên thư mục chứa chính liên kết đó, chứ không phải cwd của tiến trình
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
 
     if(ip->type != T_DIR){
-      iunlockput(ip);
-      if(parent_dir){ iput(parent_dir); parent_dir = 0; }  // ✓ FIX 1
+      iunlockput(ip); //Trước khi thực hiện bước tiếp theo, hàm gọi iunlockput(ip) để nhả khóa Sleeplock của thư mục hiện tại. 
+                     //Nếu giữ khóa thư mục cha trong khi đi tìm Inode con (vốn có thể là một liên kết trỏ ngược lại cha), hệ thống sẽ rơi vào tình trạng khóa chéo
+      if(parent_dir){ iput(parent_dir); parent_dir = 0; }  // 
       return 0;
     }
 
     if(nameiparent && *path == '\0'){
       iunlock(ip);
-      if(parent_dir){ iput(parent_dir); parent_dir = 0; }  // ✓ FIX 2
+      if(parent_dir){ iput(parent_dir); parent_dir = 0; }  // 
       return ip;
-    }
+    }  
 
     if(parent_dir){ iput(parent_dir); parent_dir = 0; }    // giải phóng iteration trước
 
@@ -551,7 +568,8 @@ namex(char *path, int nameiparent, char *name, int follow)
 
     ip = next;
     ilock(ip);
-
+ //Liên kết chỉ được "đuổi theo" nếu nó nằm ở giữa đường dẫn (*path != '\0') hoặc nếu tham số follow được bật (dành cho cat, exec)
+//Biến depth tăng lên mỗi khi gặp một Symlink. Nếu depth > MAX_RECURSION (giới hạn 10), Kernel sẽ trả về lỗi để tránh treo máy do liên kết vòng
     if(ip->type == T_SYMLINK && (follow || *path != '\0')){
       if(++depth > MAX_RECURSION){
         iunlockput(ip);
@@ -567,13 +585,20 @@ namex(char *path, int nameiparent, char *name, int follow)
       target[n] = '\0';
       iunlockput(ip);
 
+
+
+//Nối chuỗi: Sử dụng memmove để nối chuỗi target của Symlink vào phần còn lại của đường dẫn hiện tại ngay trong pathbuf.
+//Tính liên tục: Lệnh continue cho phép vòng lặp quay lại từ đầu chuỗi vừa nối mà không cần khởi động lại toàn bộ quá trình tra cứu từ root, 
+//giúp chi phí xử lý mỗi mắt xích là hằng số (O(n))
       if(*path != '\0'){
-        int tlen = strlen(target);
+        int tlen = strlen(target); //Nội dung chuỗi đường dẫn đích được đọc từ các khối dữ liệu của Inode vào bộ đệm target
         int plen = strlen(path);
         if(tlen + 1 + plen + 1 > MAXPATH){
           iput(parent_dir); parent_dir = 0;
           return 0;
         }
+//Nếu target là đường dẫn tuyệt đối (bắt đầu bằng /), Inode hiện tại được đặt lại là Root.
+//Nếu là đường dẫn tương đối, Inode bắt đầu từ chính parent_dir (thư mục chứa link đó)
         memmove(pathbuf + tlen + 1, path, plen + 1);
         pathbuf[tlen] = '/';
         memmove(pathbuf, target, tlen);
@@ -625,3 +650,6 @@ namei_nofollow(char *path)
   char name[DIRSIZ];
   return namex(path, 0, name, 0);
 }
+namei(path): Phân giải mọi mắt xích đến đích cuối cùng (follow = 1).
+namei_nofollow(path): Dừng lại tại mắt xích cuối nếu nó là Symlink (follow = 0), dùng cho lệnh ls để xem thông tin link.
+nameiparent(path, name): Dừng lại trước mắt xích cuối để thực hiện các thao tác tạo/xóa trên chính thực thể liên kết
