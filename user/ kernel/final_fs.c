@@ -505,6 +505,7 @@ skipelem(char *path, char *name)
   return path;
 }
 // fs.c — thay thế toàn bộ hàm namex và 2 hàm wrapper
+//path resolution vad modify
 static struct inode*
 namex(char *path, int nameiparent, char *name, int follow)
 {
@@ -524,6 +525,7 @@ namex(char *path, int nameiparent, char *name, int follow)
     ip = iget(ROOTDEV, ROOTINO);
   else
     ip = idup(myproc()->cwd);
+  //Modify Lookup
 // Khởi tạo điểm bắt đầu: Hệ thống kiểm tra ký tự đầu tiên của path. 
 // Nếu là /, việc tra cứu bắt đầu từ Inode gốc (ROOTINO). Nếu không, nó bắt đầu từ thư mục làm việc hiện tại (cwd) của tiến trình
 
